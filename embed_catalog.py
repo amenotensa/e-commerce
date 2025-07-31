@@ -1,26 +1,27 @@
-# embed_catalog.py  —— 生成 catalog_faiss.pkl
-import json, pickle, os
-from dotenv import load_dotenv
+# embed_catalog.py
+import json
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
+from dotenv import load_dotenv
 
-load_dotenv()                           # 读取 .env 中的 OPENAI_API_KEY
+load_dotenv()
+
 CATALOG = "catalog.json"
-OUTPUT  = "catalog_faiss.pkl"
+OUT_DIR = "faiss_store"           # ← 用文件夹而不是 .pkl
 
 def main():
-    with open(CATALOG, "r") as f:
-        items = json.load(f)
-
+    items = json.load(open(CATALOG))
     texts = [f"{it['name']}. {it['desc']}" for it in items]
-    metadatas = [{"id": it["id"]} for it in items]
+    metas = [{"id": it["id"]} for it in items]
 
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-    vstore = FAISS.from_texts(texts, embeddings, metadatas=metadatas)
+    vstore = FAISS.from_texts(
+        texts,
+        OpenAIEmbeddings(model="text-embedding-3-small"),
+        metadatas=metas,
+    )
 
-    with open(OUTPUT, "wb") as f:
-        pickle.dump(vstore, f)
-    print(f"✅ 向量库已生成 → {OUTPUT} ({os.path.getsize(OUTPUT)} bytes)")
+    vstore.save_local(OUT_DIR)    # ← 关键改动
+    print("✅ 向量库已保存到", OUT_DIR)
 
 if __name__ == "__main__":
     main()
