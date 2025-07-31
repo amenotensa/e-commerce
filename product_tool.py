@@ -4,16 +4,21 @@ from typing import List
 from langchain_core.tools import tool
 from langchain_core.documents import Document
 
-_VS_PATH = "catalog_faiss.pkl"
-_VSTORE  = pickle.load(open(_VS_PATH, "rb"))  # ⸺一次加载即可
+# 加载向量库
+_VSTORE = pickle.load(open("catalog_faiss.pkl", "rb"))
+
+# 保存上次推荐结果
+previous_results = []
 
 def _format_result(docs: List[Document], top_k=4) -> str:
-    """把向量检索结果转成 LLM 可读 JSON 字符串"""
+    """将推荐商品的 metadata 变成 JSON 字符串"""
     metas = [doc.metadata for doc in docs[:top_k]]
     return json.dumps(metas, ensure_ascii=False)
 
 @tool
 def recommend_products(query: str) -> str:
-    """当用户要求“推荐 + 关键词”时调用。返回 JSON 数组，字段：id。"""
+    """用户说‘推荐xxx’时调用，返回商品ID列表"""
     docs = _VSTORE.similarity_search(query, k=4)
+    previous_results.clear()
+    previous_results.extend(docs)
     return _format_result(docs)
