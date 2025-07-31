@@ -1,36 +1,42 @@
 # product_tool.py
-import os, pickle, json
+import os, json
+from typing import List
 from langchain_core.tools import tool
 from langchain_core.documents import Document
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
-_PKL = os.path.join(os.path.dirname(__file__), "catalog_faiss.pkl")
-_JSON = os.path.join(os.path.dirname(__file__), "catalog.json")
+BASE = os.path.dirname(__file__)
+STORE_DIR = os.path.join(BASE, "faiss_store")
+CATALOG   = os.path.join(BASE, "catalog.json")
 
 def _build_vectorstore():
-    """首次启动 / 文件损坏时自动新建向量库"""
-    with open(_JSON, "r") as f:
-        items = json.load(f)
+    """若本地无索引或损坏，则重新生成"""
+    items = json.load(open(CATALOG))
     texts = [f"{it['name']}. {it['desc']}" for it in items]
     metas = [{"id": it["id"]} for it in items]
-    v = FAISS.from_texts(texts, OpenAIEmbeddings(model="text-embedding-3-small"), metadatas=metas)
-    with open(_PKL, "wb") as f:
-        pickle.dump(v, f)
+    v = FAISS.from_texts(
+        texts,
+        OpenAIEmbeddings(model="text-embedding-3-small"),
+        metadatas=metas,
+    )
+    v.save_local(STORE_DIR)
     return v
 
-# ① 尝试读取
+# 先尝试 load_local
 try:
-    _VSTORE = pickle.load(open(_PKL, "rb"))
-except (FileNotFoundError, EOFError, pickle.UnpicklingError):
-    print("⚠️ catalog_faiss.pkl 不存在或损坏，正在重新生成…")
+    _VSTORE = FAISS.load_local(STORE_DIR,
+                               OpenAIEmbeddings(model="text-embedding-3-small"))
+except Exception as e:
+    print("⚠️ 无法加载向量库，正在重新生成 →", e)
     _VSTORE = _build_vectorstore()
 
-# —— 下方保持你的 @tool 逻辑 —— #
-previous_results = []
+# ------- 工具主体 --------
+previous_results: List[Document] = []
 
 @tool
 def recommend_products(query: str) -> str:
+    """用户说“推荐××”时调用，返回 JSON 数组（每项含 id）"""
     docs = _VSTORE.similarity_search(query, k=4)
     previous_results.clear()
     previous_results.extend(docs)
